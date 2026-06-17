@@ -1,0 +1,42 @@
+/* Neumorphic base for Streamlit */
+body {
+    background-color: #E0E5EC;
+}
+.stApp {
+    background-color: #E0E5EC;
+    font-family: 'Inter', sans-serif;
+}
+/* Neumorphic card */
+.neumorphic-card {
+    background: #E0E5EC;
+    border-radius: 20px;
+    box-shadow: 8px 8px 15px #A3B1C6, -8px -8px 15px #FFFFFF;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+/* Neumorphic button (for file uploader/buttons) */
+div.stButton > button {
+    background: #E0E5EC;
+    border: none;
+    border-radius: 12px;
+    box-shadow: 5px 5px 10px #A3B1C6, -5px -5px 10px #FFFFFF;
+    color: #1E1E1E;
+    font-weight: 600;
+    transition: all 0.2s ease-in-out;
+}
+div.stButton > button:hover {
+    box-shadow: inset 5px 5px 10px #A3B1C6, inset -5px -5px 10px #FFFFFF;
+    color: #4A90D9;
+}
+/* Input fields */
+div.stTextInput > div > div > input,
+div.stSelectbox > div > div > select {
+    background: #E0E5EC;
+    border: none;
+    border-radius: 10px;
+    box-shadow: inset 3px 3px 5px #A3B1C6, inset -3px -3px 5px #FFFFFF;
+}
+/* Sidebar */
+.css-1d391kg, .css-1lcbmhc {
+    background-color: #E0E5EC;
+}
