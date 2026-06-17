@@ -1,0 +1,194 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from utils.api_client import api_get, api_post, api_put, api_delete
+import time
+import json
+import io
+# Neumorphic CSS injection
+def load_css():
+    with open("styles/neumorphic.css") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+load_css()
+st.set_page_config(page_title="GradePulse", layout="wide")
+st.title("📊 GradePulse - Academic Performance Tracker")
+# Sidebar navigation
+with st.sidebar:
+    st.image("https://img.icons8.com/fluency/96/student-male.png", width=80)
+    st.markdown("## Menu")
+    page = st.radio("Go to", [
+        "📈 Dashboard",
+        "➕ Add Grade",
+        "📂 Bulk Upload",
+        "📋 All Grades",
+        "🔍 Student Lookup",
+        "🧠 AI Study Tips",
+        "📅 Daily Routine",
+        "⚙️ Grade Config",
+        "📥 Export"
+    ])
+# ---------- Dashboard ----------
+if page == "📈 Dashboard":
+    st.header("Dashboard")
+    grades = api_get("/grades")
+    if grades:
+        df = pd.DataFrame(grades)
+        total_students = df['roll_number'].nunique()
+        avg_percentage = df['percentage'].mean()
+        st.metric("Total Students", total_students)
+        st.metric("Average Percentage", f"{avg_percentage:.1f}%")
+        fig = px.bar(df.groupby('subject')['percentage'].mean().reset_index(), x='subject', y='percentage', title="Average % by Subject")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No grades yet. Add some!")
+# ---------- Add Grade ----------
+elif page == "➕ Add Grade":
+    st.header("Add New Grade")
+    with st.form("add_grade_form"):
+        col1, col2 = st.columns(2)
+        student_name = col1.text_input("Student Name")
+        roll_number = col2.text_input("Roll Number")
+        subject = col1.text_input("Subject")
+        marks_obtained = col2.number_input("Marks Obtained", min_value=0.0)
+        total_marks = col2.number_input("Total Marks", min_value=0.1)
+        semester = col1.selectbox("Semester", ["Fall 2025", "Spring 2026", "Summer 2026"])
+        date = col1.date_input("Date")
+        if st.form_submit_button("Add Grade"):
+            payload = {
+                "student_name": student_name,
+                "roll_number": roll_number,
+                "subject": subject,
+                "marks_obtained": marks_obtained,
+                "total_marks": total_marks,
+                "semester": semester,
+                "date": str(date)
+            }
+            try:
+                api_post("/grades", json_data=payload)
+                st.success("Grade added!")
+            except Exception as e:
+                st.error(f"Error: {e}")
+# ---------- Bulk Upload ----------
+elif page == "📂 Bulk Upload":
+    st.header("Bulk Upload CSV/Excel")
+    uploaded_file = st.file_uploader("Choose file", type=["csv", "xlsx", "xls"])
+    if uploaded_file:
+        files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
+        with st.spinner("Processing..."):
+            result = api_post("/grades/bulk-upload", files=files)
+        st.success(f"Added: {result['rows_added']} | Skipped: {result['rows_skipped']}")
+        if result['errors']:
+            st.warning("Errors found:")
+            for err in result['errors']:
+                st.write(f"- {err}")
+# ---------- All Grades ----------
+elif page == "📋 All Grades":
+    st.header("All Grade Records")
+    grades = api_get("/grades")
+    if grades:
+        df = pd.DataFrame(grades)
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("No data")
+# ---------- Student Lookup ----------
+elif page == "🔍 Student Lookup":
+    st.header("Find Student by Roll Number")
+    roll = st.text_input("Enter Roll Number")
+    if st.button("Search"):
+        if roll:
+            data = api_get(f"/grades/student/{roll}")
+            if data:
+                df = pd.DataFrame(data)
+                st.dataframe(df)
+            else:
+                st.warning("No records found.")
+# ---------- AI Study Tips ----------
+elif page == "🧠 AI Study Tips":
+    st.header("AI-Powered Study Tips")
+    grades = api_get("/grades")
+    if grades:
+        df = pd.DataFrame(grades)
+        selected_id = st.selectbox("Select a grade record", df['id'].tolist(), format_func=lambda x: f"{df[df['id']==x]['student_name'].values[0]} - {df[df['id']==x]['subject'].values[0]}")
+        if st.button("Get Tips"):
+            with st.spinner("🧠 Generating..."):
+                tips = api_post(f"/grades/{selected_id}/study-tips")
+            st.markdown(f"### {tips['student_name']} - {tips['subject']} ({tips['percentage']}%)")
+            st.info(tips['tips'])
+    else:
+        st.info("Add grades first.")
+# ---------- Daily Routine ----------
+elif page == "📅 Daily Routine":
+    st.header("AI Daily Routine Planner")
+    grades = api_get("/grades")
+    if grades:
+        df = pd.DataFrame(grades)
+        selected_id = st.selectbox("Pick a grade record to base routine", df['id'].tolist(), format_func=lambda x: f"{df[df['id']==x]['student_name'].values[0]}")
+        # Gather extra input
+        name = st.text_input("Your Name")
+        free_hours = st.slider("Free hours per day", 1, 12, 4)
+        weak_subject = st.text_input("Weakest Subject")
+        phys = st.radio("Physical Activity?", ["Yes", "No"])
+        sleep_hours = st.slider("Sleep hours", 4, 10, 7)
+        water = st.selectbox("Water Intake", ["Low", "Moderate", "High"])
+        # Get all subjects and marks for this student
+        student_roll = df[df['id']==selected_id]['roll_number'].values[0]
+        student_grades = api_get(f"/grades/student/{student_roll}")
+        marks_list = [{"subject": g['subject'], "percentage": g['percentage']} for g in student_grades]
+        subjects = [g['subject'] for g in student_grades]
+        if st.button("Generate Routine"):
+            payload = {
+                "student_name": name,
+                "free_hours": free_hours,
+                "weak_subject": weak_subject,
+                "physical_activity": phys,
+                "sleep_hours": sleep_hours,
+                "water_intake": water,
+                "subjects": subjects,
+                "marks": marks_list
+            }
+            with st.spinner("⏳ Building your perfect day..."):
+                routine = api_post(f"/grades/{selected_id}/routine", json_data=payload)
+            st.json(routine['routine'])
+    else:
+        st.info("Need grade records to personalize routine.")
+# ---------- Grade Config ----------
+elif page == "⚙️ Grade Config":
+    st.header("Custom Grading Thresholds")
+    configs = api_get("/grades/config")
+    for c in configs:
+        st.write(f"**{c['label']}**: {c['min_percentage']}% - {c['max_percentage']}% (Passing: {c['is_passing']})")
+    with st.expander("Add New Configuration"):
+        label = st.text_input("Grade Label", "A")
+        min_per = st.number_input("Min %", 0.0, 100.0, 90.0)
+        max_per = st.number_input("Max %", 0.0, 100.0, 100.0)
+        is_pass = st.checkbox("Is Passing", True)
+        if st.button("Save Config"):
+            api_post("/grades/config", json_data={
+                "label": label,
+                "min_percentage": min_per,
+                "max_percentage": max_per,
+                "is_passing": is_pass
+            })
+            st.success("Config added")
+            st.experimental_rerun()
+# ---------- Export ----------
+elif page == "📥 Export":
+    st.header("Download Grades")
+    format_option = st.selectbox("Format", ["json", "csv", "excel"])
+    if st.button("Download"):
+        # For simplicity, we'll fetch and provide a direct link via API proxy; Streamlit can't directly save.
+        # Instead we fetch data and display as download button using st.download_button.
+        data = api_get(f"/grades/export?format={format_option}")
+        if format_option == "json":
+            json_str = json.dumps(data, indent=2)
+            st.download_button("Download JSON", json_str, "grades.json", "application/json")
+        elif format_option == "csv":
+            df = pd.DataFrame(data)
+            csv = df.to_csv(index=False).encode()
+            st.download_button("Download CSV", csv, "grades.csv", "text/csv")
+        else:
+            df = pd.DataFrame(data)
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            st.download_button("Download Excel", output.getvalue(), "grades.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
